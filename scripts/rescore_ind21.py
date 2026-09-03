@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
 """按《行业评分体系》21 项指标分档表对 70 行业证据库打分。
 每个指标按用户标准的"情况→得分"分档：增速类按 >30/10-30/0-10/<0% 分档，
-定性类按关键词分档，查不到按标准默认分。输出 rec["v21"]。"""
-import json, shutil, re
+定性类按关键词分档，查不到按标准默认分。输出 rec["v21"]。
+用法: python3 rescore_ind21.py [主库JSON] [地区简称]  默认: evidence_recs.json 沪"""
+import json, shutil, re, sys
 
-MAIN = "/tmp/evidence_recs.json"
-shutil.copy(MAIN, "/tmp/evidence_recs_bak_v21band.json")
+MAIN = sys.argv[1] if len(sys.argv) > 1 else "evidence_recs.json"
+SHORT = sys.argv[2] if len(sys.argv) > 2 else "沪"
+shutil.copy(MAIN, MAIN + ".bak_v21band")
 
 PCT = re.compile(r'([+-]?\d+(?:\.\d+)?)\s*%')
 PCTP = re.compile(r'([+-]?\d+(?:\.\d+)?)\s*(?:个百分点|pct)', re.I)
@@ -17,7 +19,7 @@ def valid_texts(cells):
         ev = c.get("ev") or ""
         if c.get("miss") or not ev:
             continue
-        if ev.startswith(("缺沪", "缺数据", "无沪", "暂无", "NA", "待统一")):
+        if ev.startswith((f"缺{SHORT}", "缺数据", f"无{SHORT}", "暂无", "NA", "待统一")):
             continue
         out.append(ev)
     return out

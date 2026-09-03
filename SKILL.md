@@ -30,18 +30,24 @@ agent_created: true
 
 - 与用户确认三件事：
   - **地区**（如上海/北京/深圳，简称用于证据文本如"沪/京/深"）
-  - **时间口径**（默认"当前时间的最新季度数据"；用户没指定就用当下日期，检索时优先该时间点已发布的最新数据）
+  - **时间口径**：默认取**系统当前日期**，检索范围锁定「当前季度 + 上一季度」已发布的最新公开数据（用 `date` 命令取系统今天，再推算季度区间；用户没指定时间就用这个，勿用训练记忆里的旧日期）。
   - **行业范围**（默认 GB/T 4754 全部 70 个大类，代码为字符串如 "39"；用户可指定子集）
 - 建工作目录：`WORKDIR`（中间产物）与 `OUTDIR`（交付物）。
 
-### Step 2｜适配脚本到新地区
+### Step 2｜脚本已参数化，直接传参即可
+
+核心脚本（rescore_ind21.py、gen_evidence_html.py）**不再硬编码地区/日期/路径**，通过命令行参数传入，无需改脚本或 sed 替换：
 
 ```bash
-bash <skill_dir>/scripts/adapt_region.sh <OUTDIR> <WORKDIR> <地区名> <简称> [日期]
-# 例: bash .../adapt_region.sh ~/WorkBuddy/ws/outputs /tmp/bj_work 北京 京 2026-09-03
+# 评分：<主库JSON> <地区简称>
+python3 <skill_dir>/scripts/rescore_ind21.py WORKDIR/evidence_recs.json 京
+
+# 生成 HTML：<主库JSON> <输出目录> <地区全名> <地区简称> <日期> <宏观指数JSON>
+python3 <skill_dir>/scripts/gen_evidence_html.py WORKDIR/evidence_recs.json OUTDIR 北京 京 2026-09-03 WORKDIR/macro_indices.json
 ```
 
-该脚本把核心脚本复制到 WORKDIR 并完成路径与地区词替换（沪上/在沪/沪口径→本地；沪→简称；上海→地区名；输出路径与日期）。适配后**通读一遍**脚本顶部配置；若行业数非 70，全局替换相关字样与统计口径。
+- 日期省略时自动用系统当天；宏观指数文件省略时默认找 `macro_indices.json`。
+- `adapt_region.sh` 保留作备选（复制脚本到 WORKDIR），但已非必需；若行业数非 70，改 `gen_evidence_html.py` 顶部的地区默认值与统计口径即可。
 
 ### Step 3｜采证（并行子代理，检索最新时间数据）
 
@@ -62,7 +68,7 @@ bash <skill_dir>/scripts/adapt_region.sh <OUTDIR> <WORKDIR> <地区名> <简称>
 ### Step 5｜评分（21 指标分档制）
 
 ```bash
-python3 WORKDIR/rescore_ind21.py
+python3 WORKDIR/rescore_ind21.py WORKDIR/evidence_recs.json {地区简称}
 ```
 
 - 评分引擎按 21 指标分档表逐项打分（增速类 >30%/10–30%/0–10%/<0% 分档；定性类关键词分档；查不到按默认分），完整分档表见 `references/scoring-standard-industry.md`。
@@ -78,7 +84,7 @@ python3 WORKDIR/rescore_ind21.py
 ### Step 7｜生成交付物
 
 ```bash
-python3 WORKDIR/gen_evidence_html.py
+python3 WORKDIR/gen_evidence_html.py WORKDIR/evidence_recs.json OUTDIR {地区全名} {地区简称} {日期} WORKDIR/macro_indices.json
 ```
 
 产出单文件 HTML（约 2.5MB，无外部依赖）：NS 两级主表（点击 NS 行展开二级国标行业、点行业行→右侧抽屉）、六大类权重滑杆（合计锁 100、其余类别按比例分配、恢复默认按钮）、搜索、分数筛选、可折叠维度面板、宏观指数对照面板、缺格/口径标注。
@@ -104,10 +110,10 @@ python3 WORKDIR/gen_evidence_html.py
 ## Resources
 
 ### scripts/
-- `rescore_ind21.py` — **现行评分引擎**：21 指标分档制（六大类 20/10/20/20/20/10），写 v21 与唯一全榜 rank。读主库写回。
-- `gen_evidence_html.py` — **现行 HTML 生成器**：NS 两级主表、六大类滑杆、右侧抽屉、排名去重（rankOf）、宏观映射全在此。
+- `rescore_ind21.py` — **现行评分引擎**：21 指标分档制（六大类 20/10/20/20/20/10），写 v21 与唯一全榜 rank。参数：`<主库JSON> <地区简称>`（默认 `evidence_recs.json 沪`）。读主库写回。
+- `gen_evidence_html.py` — **现行 HTML 生成器**：NS 两级主表、六大类滑杆、右侧抽屉、排名去重（rankOf）、宏观映射全在此。参数：`<主库JSON> <输出目录> <地区全名> <地区简称> <日期> <宏观JSON>`（日期省略=系统当天，地区/简称/路径均已参数化，无硬编码）。
 - `merge_evidence_csv.py` — CSV 四规则合并引擎（ALIAS 别名、TO_SUPP、T1→S1、hist 去重）。
-- `adapt_region.sh` — 新地区适配：复制 + sed 替换路径、地区词与日期。
+- `adapt_region.sh` — 备选：复制脚本到工作目录（脚本已参数化，非必需）。
 - `rescore_evidence.py` — 早期信号法评分引擎（**已弃用**，仅保留备查，勿用于新任务）。
 
 ### references/

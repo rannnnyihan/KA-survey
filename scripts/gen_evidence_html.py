@@ -1,9 +1,18 @@
 # -*- coding: utf-8 -*-
-"""生成 上海70行业多维指标证据库 交互HTML（浅色主题，单文件无外部依赖）"""
-import json, html, os, re
+"""生成 {地区}行业多维指标证据库 交互HTML（浅色主题，单文件无外部依赖）
+用法: python3 gen_evidence_html.py [主库JSON] [输出目录] [地区全名] [地区简称] [日期YYYY-MM-DD] [宏观指数JSON]
+默认: evidence_recs.json  .  {REGION}  {SHORT}  <系统今天>  macro_indices.json"""
+import json, html, os, re, sys, datetime
 
-OUT = "/Users/yihanran/WorkBuddy/2026-09-02-15-38-53/outputs"
-TODAY = "2026-09-02"
+def _arg(i, d):
+    return sys.argv[i] if len(sys.argv) > i else d
+
+MAIN_JSON = _arg(1, "evidence_recs.json")                        # 主库 JSON 路径
+OUT = _arg(2, ".")                                               # 输出目录
+REGION = _arg(3, "{REGION}")                                          # 地区全名
+SHORT = _arg(4, "{SHORT}")                                             # 地区简称（缺{SHORT}数据的"{SHORT}"）
+TODAY = _arg(5, datetime.date.today().isoformat())               # 日期，默认系统今天
+MACRO_JSON = _arg(6, "macro_indices.json")                       # 宏观指数文件（可选）
 # 显示维度与权重（用户提供框架）
 DIMS = ["需求增长", "供给能力", "盈利质量", "资本进入", "技术成熟度", "政策支持"]
 WEIGHTS = {
@@ -56,16 +65,16 @@ def esc(x): return html.escape(str(x if x is not None else ""), quote=True)
 # ===== 每行业一句话 AI 摘要（主表展示用，非评分依据） =====
 _TIER_PRI = {"S1": 0, "S2": 1, "S3": 2, "S4": 3, "": 4}
 _NUM = re.compile(r'\d+(\.\d+)?\s*(%|亿元|万亿|万辆|万|家|个)')
-_SH = re.compile(r'上海|沪|本市|全市')
+_SH = re.compile(REGION + r'|' + SHORT + r'|本市|全市')
 
 def ai_summary(r, limit=46):
-    """从证据格中挑一条最有代表性的上海口径证据，压成一句话。"""
+    """从证据格中挑一条最有代表性的{REGION}口径证据，压成一句话。"""
     cands = []
     for c in r.get("cells", []):
         if c.get("miss") or c.get("dim") == "补充":
             continue
         ev = c.get("ev", "")
-        if not ev or len(ev) < 8 or ev.startswith(("缺沪", "缺数据", "无沪", "暂无")):
+        if not ev or len(ev) < 8 or ev.startswith((f"缺{SHORT}", "缺数据", f"无{SHORT}", "暂无")):
             continue
         has_num = bool(_NUM.search(ev))
         is_sh = bool(_SH.search(ev)) and "全国口径" not in ev[:40]
@@ -153,13 +162,13 @@ def url_links(urls):
 
 def cell_html(c):
     if c.get("miss"):
-        note = re.sub(r'^(缺沪数据|缺数据|无沪数据|无上海|无本市|暂无上海|待统一接口补充|NA)', '', esc(c["ev"])).strip()
+        note = re.sub(rf'^(缺{SHORT}数据|缺数据|无{SHORT}数据|无{REGION}|无本市|暂无{REGION}|待统一接口补充|NA)', '', esc(c["ev"])).strip()
         note = re.sub(r'^[：:\s]+', '', note)
         tags = tier_chip(c.get("tier", ""))
         if c.get("year"):
             tags += f'<span class="yr">{esc(c["year"])}</span>'
         return (f'<div class="cell miss"><span class="ind">{esc(c["ind"])}</span>'
-                f'<span class="mnote">缺沪数据<span class="mdet">{note}</span></span>'
+                f'<span class="mnote">缺{SHORT}数据<span class="mdet">{note}</span></span>'
                 f'<span class="tags">{tags}</span>'
                 + url_links(c.get("urls") or []) + "</div>")
     return (f'<div class="cell"><div class="cellhd"><span class="ind">{esc(c["ind"])}</span>'
@@ -224,11 +233,11 @@ def _macro_targets(m):
     if "BSI" in t:
         return _M_IND  # 工业企业样本调查
     if "FAI" in t or "固定资产投资" in t:
-        if "上海分行业" in x:
+        if f"{REGION}分行业" in x:
             return _M_IND + _M_CONSTR + _M_TRANSPORT + _M_INFO + _M_WHOLE_RETAIL + _M_ACCOM + _M_REAL
-        if "上海工业投资" in x:
+        if f"{REGION}工业投资" in x:
             return _M_IND
-        if "上海全市固定资产投资" in x:
+        if f"{REGION}全市固定资产投资" in x:
             return []  # 全市总量，无对应细分行业
         if "装备制造业投资" in x:
             return _M_MANU + _M_EQUIP
@@ -375,7 +384,7 @@ def industry_body(r):
     mp = macro_panel_html(r["code"])
     if mp:
         panels.append(mp)
-    pos = esc(r.get("position") or "本轮未检索到沪上形态描述。")
+    pos = esc(r.get("position") or f"本轮未检索到{SHORT}上形态描述。")
     cred = esc(r.get("cred") or "")
     score = v21.get("total")
     score_txt = f'{score:g}/100' if score is not None else "–"
@@ -394,8 +403,8 @@ def industry_body(r):
   <button class="drawer-close" onclick="closeDrawer(event)" aria-label="关闭抽屉">✕</button>
 </div>
 <div class="indbody">
-  <details class="panel poswhy" open><summary class="phead"><span>沪上产业形态与背景</span>{cred_html}</summary>
-    <div class="pos"><b>沪上形态与背景（事实描述）</b><p>{pos}</p></div>
+  <details class="panel poswhy" open><summary class="phead"><span>{SHORT}上产业形态与背景</span>{cred_html}</summary>
+    <div class="pos"><b>{SHORT}上形态与背景（事实描述）</b><p>{pos}</p></div>
   </details>
   <div class="scoreline"><b>六大类得分（行业评分体系 · 21项指标）</b>{dim_bars(r)}</div>
   <div class="panels">{"".join(panels)}</div>
@@ -424,14 +433,14 @@ def industry_card(r):
 </details>'''
 
 def main():
-    recs = json.load(open("/tmp/evidence_recs.json", encoding="utf-8"))
+    recs = json.load(open(MAIN_JSON, encoding="utf-8"))
     # stats
     n = len(recs)
     total_core = 21 * n
     filled = sum(evid_count(r) for r in recs)
     # 官方与宏观指数 → 并入对应行业卡展示（不参与自建信号评分，仅作对照）
     try:
-        macro_all = json.load(open("/tmp/refresh2026/macro_indices.json", encoding="utf-8"))
+        macro_all = json.load(open(MACRO_JSON, encoding="utf-8"))
     except Exception:
         macro_all = []
     global MACRO_BY_IND
@@ -551,7 +560,7 @@ def main():
     )
     html_doc = f'''<!DOCTYPE html>
 <html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>上海70行业多维指标证据库 · {TODAY}</title>
+<title>{REGION}70行业多维指标证据库 · {TODAY}</title>
 <style>
 :root{{--ink:#1c2733;--mut:#5d6d7e;--line:#e4e9ef;--bg:#f7f8fa;--card:#ffffff;--acc:#0f62fe;--accbg:#eaf1ff}}
 *{{box-sizing:border-box}}body{{margin:0;background:var(--bg);color:var(--ink);font:14px/1.6 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif}}
@@ -678,14 +687,14 @@ details.ind>.drawer-head{{display:none}}
 @media(max-width:720px){{.drawer{{width:100vw;border-left:0}}}}
 {v23_css}
 </style></head><body><div class="wrap">
-<h1>上海 70 细分行业 · 综合评分与证据库 <small>{TODAY}</small></h1>
-<p class="sub">覆盖国民经济行业分类 70 个带编号细分行业；每个证据格：数字/事实 + 年份 + 来源层级(S1官方→S4转载) + 可点击出处。检索不到的格如实标注「缺沪数据」，不拿全国口径顶替。采集与评分统一按《行业评分体系》21 项指标（六大类 100 分制）。</p>
+<h1>{REGION} 70 细分行业 · 综合评分与证据库 <small>{TODAY}</small></h1>
+<p class="sub">覆盖国民经济行业分类 70 个带编号细分行业；每个证据格：数字/事实 + 年份 + 来源层级(S1官方→S4转载) + 可点击出处。检索不到的格如实标注「缺{SHORT}数据」，不拿全国口径顶替。采集与评分统一按《行业评分体系》21 项指标（六大类 100 分制）。</p>
 <div class="meta-card">
 <span class="mc">覆盖行业 <b>{n}</b></span>
 <span class="mc">评分指标 <b>21</b> 项 / 六大类</span>
 <span class="mc">有证据指标 <b>{filled}/{total_core}</b>（21项中有实际证据支撑的项数，占 {filled/total_core*100:.0f}%）</span>
-<span class="mc">口径 <b>仅上海</b></span>
-<span class="mc">优先级 <b>S1 上海官方</b> ＞ S2 在沪行业一手 ＞ S3 权威第三方沪口径 ＞ S4 转载</span>
+<span class="mc">口径 <b>仅{REGION}</b></span>
+<span class="mc">优先级 <b>S1 {REGION}官方</b> ＞ S2 在{SHORT}行业一手 ＞ S3 权威第三方{SHORT}口径 ＞ S4 转载</span>
 </div>
 <div class="card"><h2>施耐德 NS 行业 × 国标行业综合排名</h2>
 <div class="toolbar"><input id="q" placeholder="搜索行业、关键企业或细分方向…">
@@ -704,8 +713,8 @@ details.ind>.drawer-head{{display:none}}
 </div>
 <div class="foot">
 <b>方法口径</b><br>
-1. 每条证据 = 上海本地事实/数字 + 年份 + 来源层级 + 出处链接；来源层级：S1 上海官方（市/区统计局公报年鉴、经信委、发改委、各行业主管委办、海关上海、监管在沪单位等）→ S2 在沪行业一手（在沪上市公司年报公告、央企国企官网、上海行业协会、上海主流媒体）→ S3 权威第三方但沪口径（券商研报沪章节、招聘/创投平台沪数据）→ S4 一般转载（极少采用）。<br>
-2. 「缺沪数据（原因）」＝本轮联网未检索到上海本地公开信息，宁缺勿假；个别格为「无沪上公开数据（本轮检索未覆盖）」。标 NA 的出口类指标通常因行业非出口导向。背景段若含全国口径均已标注"(全国口径)"，不计入评分。行业代码为 GB/T 4754 大类。<br>
+1. 每条证据 = {REGION}本地事实/数字 + 年份 + 来源层级 + 出处链接；来源层级：S1 {REGION}官方（市/区统计局公报年鉴、经信委、发改委、各行业主管委办、海关{REGION}、监管在{SHORT}单位等）→ S2 在{SHORT}行业一手（在{SHORT}上市公司年报公告、央企国企官网、{REGION}行业协会、{REGION}主流媒体）→ S3 权威第三方但{SHORT}口径（券商研报{SHORT}章节、招聘/创投平台{SHORT}数据）→ S4 一般转载（极少采用）。<br>
+2. 「缺{SHORT}数据（原因）」＝本轮联网未检索到{REGION}本地公开信息，宁缺勿假；个别格为「无{SHORT}上公开数据（本轮检索未覆盖）」。标 NA 的出口类指标通常因行业非出口导向。背景段若含全国口径均已标注"(全国口径)"，不计入评分。行业代码为 GB/T 4754 大类。<br>
 3. <b>评分标准（行业评分体系 · 21 项指标 / 六大类 / 100 分制）</b>：六大类及权重——需求20（FAI增长4/规上企业增长3/出口增长3/下游景气度4/渗透率空间3/龙头预算增长3）、资本10（投资增长5/融资活动增长5）、供给20（工业增加值5/供给瓶颈5/行业集中度5/产能利用率5）、技术20（技术突破7/商业化成熟度7/招聘人数增长6）、盈利20（龙头企业收入增长7/利润率改善7/ROE·ROIC6）、政策10（政策提及数4/政府补贴3/国家战略支持3）。每项指标按标准<b>分档表</b>评分：增速类（&gt;30%→满分档、10–30%→次档、0–10%→中档、明显下滑→低档）、定性类按关键词分档（如供给瓶颈：严重紧缺5/局部约束4/基本平衡3/过剩1），检索不到按标准默认分（多为中档），每项评分理由见抽屉内类别面板。上方滑杆可临时调节各类权重，其余类别按比例分配、合计恒为100分。<br>
 4. <b>排名平级决胜</b>：总分相同（0.1 精度）时按行业代码排序，严格 1–70 不并列。<br>
 5. 采证时间 {TODAY}（评分证据以 <b>2026 年最新季度</b>为主：上半年/二季度/部分 1-7 月；被更新的历史口径留存于主库 hist 字段备查）；链接来自当轮联网检索快照，标注「栏目首页」的为部门网站入口页而非具体文章，建议点击后站内复核。本页供行业研究参考，不构成投资建议。
@@ -873,7 +882,7 @@ document.addEventListener('keydown',e=>{{if(e.key==='Escape')closeDrawer();}});
 recalc();
 </script>
 </body></html>'''
-    path = os.path.join(OUT, f"上海70行业多维指标证据库_{TODAY}.html")
+    path = os.path.join(OUT, f"{REGION}70行业多维指标证据库_{TODAY}.html")
     open(path, "w", encoding="utf-8").write(html_doc)
     print("HTML 已写:", path, round(os.path.getsize(path) / 1024, 1), "KB")
 
