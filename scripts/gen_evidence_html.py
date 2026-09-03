@@ -687,7 +687,7 @@ details.ind>.drawer-head{{display:none}}
 <span class="mc">口径 <b>仅上海</b></span>
 <span class="mc">优先级 <b>S1 上海官方</b> ＞ S2 在沪行业一手 ＞ S3 权威第三方沪口径 ＞ S4 转载</span>
 </div>
-<div class="card"><h2>施耐德 NS 行业 × 国标行业综合排名（NS 得分 = 成员国标行业总分均值；点击 NS 行展开成员行业，点击行业行 → 右侧抽屉）</h2>
+<div class="card"><h2>施耐德 NS 行业 × 国标行业综合排名</h2>
 <div class="toolbar"><input id="q" placeholder="搜索行业、关键企业或细分方向…">
 <select id="fsel" class="sel"><option value="">全部分数</option><option value="70">总分 ≥ 70</option><option value="60">总分 60–70</option><option value="0">总分 &lt; 60</option></select>
 <span id="cnt" class="hint"></span></div>
